@@ -1,10 +1,91 @@
-﻿namespace caz;
+﻿using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Text;
+
+namespace caz;
 
 class Program
 {
     static void Main(string[] args)
     {
-        Test8();
+        TestE();
+    }
+
+    private static void TestE()
+    {
+        var lines = File.ReadAllLines("input.txt");
+        var parser = new TestBlue3();
+        var result = lines.Select(x => parser.Parse(x))
+            .ToArray();
+        const int maxR = 12;
+        const int maxG = 13;
+        const int maxB = 14;
+        int sum = 0;
+        int power = 0;
+
+        foreach (var game in result)
+        {
+            Debug.Assert(game.Ok);
+            Debug.Assert(game.Rest == string.Empty);
+            //var run = new GameRun()
+            //{
+            //    Data = new List<TestBlue> {
+            //        new TestBlue { Color = "red" },
+            //        new TestBlue { Color = "blue" },
+            //        new TestBlue { Color = "green" },
+            //    }
+            //};
+
+            var g = game.Value;
+            var red = g.Runs.SelectMany(x => x.Data
+                            .Where(t => t.Color == "red")
+                            .Select(t => t.Number))
+                            .Max();
+            var green = g.Runs.SelectMany(x => x.Data
+                            .Where(t => t.Color == "green")
+                            .Select(t => t.Number))
+                            .Max();
+            var blue = g.Runs.SelectMany(x => x.Data
+                            .Where(t => t.Color == "blue")
+                            .Select(t => t.Number))
+                            .Max();
+            if (red <= maxR && green <= maxG && blue <= maxB) sum += g.Index;
+            var local = red * green * blue;
+            power += local;
+            //game.Value.Runs.Select(x => )
+        }
+        Console.WriteLine(sum);
+        Console.WriteLine(power);
+    }
+
+    private static void TestD()
+    {
+        var a = new TestBlue3();
+        var b = a.Parse("Game 15: 15 red, 3 blue, 5 red, 10 green; 6 red, 3 blue; 19 green00xj");
+    }
+
+    private static void TestC()
+    {
+        var a = new TestBlue2();
+        var b = a.Parse("15 red, 3 blue, 5 red, 10 green00xj");
+    }
+
+    private static void TestB()
+    {
+        var comma = new StartsWith(", ");
+        var dp = new TestBlueParser();
+        var xp = new Sequence<TestBlue>(new Map<string, TestBlue>(comma, _ => null), dp);
+        var mp = new ZeroMore<TestBlue>(xp);
+        var rr = mp.Parse(", 3 blue, 5 red, 10 green,--90");
+    }
+
+    private static void TestA()
+    {
+        var seq = Enumerable.Range(1, 5);
+        var result = seq.Aggregate(new StringBuilder(), (sb, x) => sb.Append(x));
+        var final = result.ToString();
+        var A = new TestBlueParser();
+        var B = A.Parse("2 redblueuuu");
     }
 
     private static void Test8()
@@ -72,13 +153,20 @@ class Program
 
 // 3 blue,
 
-record Occur(int Number, string Color) { }
+//record Occur(int Number, string Color) { }
 
 //class Vysledek
 //{
 //    public int Number { get; set; }
 //    public string Color { get; set; }
 //}
+
+[DebuggerDisplay("{Number} {Color}")]
+class TestBlue
+{
+    public int Number { get; set; }
+    public string Color { get; set; }
+}
 
 class ColorParser : Parser<string>
 {
@@ -92,22 +180,132 @@ class ColorParser : Parser<string>
     }
 }
 
-class GameSet : Parser<int>
+class Game
 {
-    public override Result<int> Parse(string input)
+    public List<GameRun> Runs { get; set; }
+    public int Index { get; set; }
+}
+
+class GameRun
+{
+    public List<TestBlue> Data { get; set; }
+}
+
+class TestBlue3 : Parser<Game>
+{
+    public override Result<Game> Parse(string input)
     {
-        var A = new ThreeBlue();
-        var result = A.Parse(input);
+        var obj = new Game { Runs = new List<GameRun>() };
+
+        var bp = new StartsWith("Game ");
+        var n = new Number();
+        var gdp = new StartsWith(": ");
+        var bsq = new Sequence<Game>(new Map<string, Game>(bp, _ => null),
+            new Map<int, Game>(n, x =>
+            {
+                obj.Index = x;
+                return obj;
+            }), new Map<string, Game>(gdp, _ => null));
+
+
+
+        var op = new TestBlue2();
+        var op1 = new Map<GameRun, Game>(op, x =>
+        {
+            obj.Runs.Add(x);
+            return obj;
+        });
+
+        var comma = new StartsWith("; ");
+        var dp = new TestBlue2();
+        var xp = new Sequence<GameRun>(new Map<string, GameRun>(comma, _ => null), dp);
+        var mp = new ZeroMore<GameRun>(xp);
+        var mpf = new Map<GameRun[], Game>(mp, x =>
+        {
+            obj.Runs.AddRange(x);
+            return obj;
+        });
+
+        var sq = new Sequence<Game>(bsq, op1, mpf);
+        var result = sq.Parse(input);
         if (result.Ok)
         {
+            return Result<Game>.ToSuccess(obj, result.Rest);
         }
-        throw new NotImplementedException();
+        else
+        {
+            return Result<Game>.ToFailure($"Failed to parse {input}");
+        }
     }
 }
 
-class ThreeBlue : Parser<Occur>
+class TestBlue2 : Parser<GameRun>
 {
-    public override Result<Occur> Parse(string input)
+    public override Result<GameRun> Parse(string input)
+    {
+        var obj = new GameRun { Data = new List<TestBlue>() };
+        var op = new TestBlueParser();
+        var op1 = new Map<TestBlue, GameRun>(op, x =>
+        {
+            obj.Data.Add(x);
+            return obj;
+        });
+        var comma = new StartsWith(", ");
+        var dp = new TestBlueParser();
+        var xp = new Sequence<TestBlue>(new Map<string, TestBlue>(comma, _ => null), dp);
+        var mp = new ZeroMore<TestBlue>(xp);
+        var mpf = new Map<TestBlue[], GameRun>(mp, x =>
+        {
+            obj.Data.AddRange(x);
+            return obj;
+        });
+
+        var sq = new Sequence<GameRun>(op1, mpf);
+        var result = sq.Parse(input);
+        if (result.Ok)
+        {
+            return Result<GameRun>.ToSuccess(obj, result.Rest);
+        }
+        else
+        {
+            return Result<GameRun>.ToFailure($"Failed to parse {input}");
+        }
+    }
+}
+
+class TestBlueParser : Parser<TestBlue>
+{
+    public override Result<TestBlue> Parse(string input)
+    {
+        var obj = new TestBlue();
+
+        var np = new Number();
+        var cp = new ColorParser();
+        var np1 = new Map<int, TestBlue>(np, (n) =>
+        {
+            obj.Number = n;
+            return obj;
+        });
+
+        var sp = new Map<string, TestBlue>(new StartsWith(" "), _ => obj);
+
+        var cp1 = new Map<string, TestBlue>(cp, c =>
+        {
+            obj.Color = c;
+            return obj;
+        });
+
+        var agg = new Sequence<TestBlue>(np1, sp, cp1);
+        var result = agg.Parse(input);
+        if (result.Ok)
+            return Result<TestBlue>.ToSuccess(obj, result.Rest);
+        return Result<TestBlue>.ToFailure($"Failed to parse {input}");
+    }
+}
+
+class ThreeBlue : Parser<TestBlue>
+{
+    public override Result<TestBlue> Parse(string input)
     {
         var A = new Number();
         var B = new ColorParser();
@@ -118,12 +316,12 @@ class ThreeBlue : Parser<Occur>
             var D = B.Parse(input);
             if (D.Ok)
             {
-                return Result<Occur>.ToSuccess(new Occur(C.Value, D.Value), D.Rest);
+                return Result<TestBlue>.ToSuccess(new TestBlue { Number = C.Value, Color = D.Value }, D.Rest);
             }
-            return Result<Occur>.ToFailure($"{nameof(ThreeBlue)}: Failed to parse {input}");
+            return Result<TestBlue>.ToFailure($"{nameof(ThreeBlue)}: Failed to parse {input}");
         }
 
-        return Result<Occur>.ToFailure($"{nameof(ThreeBlue)}: Failed to parse {input}");
+        return Result<TestBlue>.ToFailure($"{nameof(ThreeBlue)}: Failed to parse {input}");
     }
 }
 
@@ -188,6 +386,32 @@ class Map<T, U> : Parser<U>
     }
 }
 
+class ZeroMore<T> : Parser<T[]>
+{
+    private Parser<T> A { get; }
+
+    public override Result<T[]> Parse(string input)
+    {
+        List<T> list = new List<T>();
+        string rest = input;
+
+        while (true)
+        {
+            var B = A.Parse(rest);
+            if (!B.Ok) break;
+            list.Add(B.Value);
+            rest = B.Rest;
+        }
+        return Result<T[]>.ToSuccess(list.ToArray(), rest);
+    }
+
+    public ZeroMore(Parser<T> A)
+    {
+        this.A = A;
+    }
+}
+
+
 class OneMore<T> : Parser<T[]>
 {
     private Parser<T> A { get; }
@@ -235,6 +459,35 @@ class Digit : Parser<int>
         var digit = int.Parse(result.Single());
         return Result<int>.ToSuccess(digit, input.Substring(1));
 
+    }
+}
+
+class Sequence<T> : Parser<T>
+{
+    private Parser<T>[] Args { get; }
+
+    public override Result<T> Parse(string input)
+    {
+        Result<T> result = null;
+
+        foreach (var item in Args)
+        {
+            result = item.Parse(input);
+
+            if (!result.Ok)
+            {
+                return Result<T>.ToFailure($"Sequence: Failed to parse input {input}");
+            }
+
+            input = result.Rest;
+        }
+
+        return Result<T>.ToSuccess(result.Value, result.Rest);
+    }
+
+    public Sequence(params Parser<T>[] args)
+    {
+        Args = args;
     }
 }
 
